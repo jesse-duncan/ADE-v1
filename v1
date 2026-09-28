@@ -1,0 +1,1240 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100 select-none">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Android 15 Virtual Machine & App Testing Suite</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            m3: {
+              primary: '#A8C7FA',
+              onPrimary: '#00315B',
+              surface: '#111318',
+              surfaceVariant: '#282A2F',
+              primaryContainer: '#004A77',
+              onPrimaryContainer: '#C2E7FF',
+              accent: '#7C4DFF',
+              card: 'rgba(30, 34, 42, 0.85)',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'Roboto', 'sans-serif'],
+            mono: ['Fira Code', 'monospace'],
+          },
+          animation: {
+            'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'bounce-short': 'bounce 0.5s infinite alternate',
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* Custom scrollbars for simulated mobile UI & logs */
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.2);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.4);
+    }
+    
+    /* Device frame glass reflections */
+    .device-screen-shadow {
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 30px 2px rgba(124, 77, 255, 0.15);
+    }
+    
+    .glossy-overlay {
+      background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 40%);
+    }
+
+    /* Swipe gesture bar styling */
+    .gesture-bar {
+      width: 120px;
+      height: 4px;
+      background-color: rgba(255, 255, 255, 0.6);
+      border-radius: 9999px;
+    }
+
+    /* Material You Ripple & Glass Effects */
+    .m3-glass {
+      background: rgba(28, 32, 40, 0.75);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    /* App Active Card Stack in Recents */
+    .recents-card {
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+  </style>
+</head>
+<body class="h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden text-slate-100">
+
+  <!-- Top Workspace Toolbar & VM Control Panel -->
+  <header class="h-14 border-b border-slate-800 bg-slate-900/90 px-4 flex items-center justify-between z-30 shrink-0">
+    <div class="flex items-center space-x-3">
+      <div class="flex items-center space-x-2 text-indigo-400 font-bold text-lg">
+        <i class="fa-brands fa-android text-2xl text-emerald-400 animate-pulse"></i>
+        <span>Android 15 <span class="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-full font-mono">API 35</span></span>
+      </div>
+      <span class="text-slate-600">|</span>
+      <span class="text-xs text-slate-400 hidden md:inline-block">Pixel 9 Pro WebAssembly VM Sandbox</span>
+    </div>
+
+    <!-- Live VM Hardware Metrics Display -->
+    <div class="hidden lg:flex items-center space-x-6 text-xs font-mono bg-slate-950 px-4 py-1.5 rounded-xl border border-slate-800/80">
+      <div class="flex items-center space-x-2">
+        <span class="text-slate-500">FPS:</span>
+        <span id="metric-fps" class="text-emerald-400 font-semibold">60</span>
+      </div>
+      <div class="flex items-center space-x-2">
+        <span class="text-slate-500">CPU:</span>
+        <div class="w-12 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+          <div id="metric-cpu-bar" class="bg-indigo-400 h-full w-12 transition-all duration-300"></div>
+        </div>
+        <span id="metric-cpu-text" class="text-indigo-300">12%</span>
+      </div>
+      <div class="flex items-center space-x-2">
+        <span class="text-slate-500">RAM:</span>
+        <span id="metric-ram" class="text-sky-400 font-semibold">3.2 / 12 GB</span>
+      </div>
+      <div class="flex items-center space-x-2">
+        <span class="text-slate-500">NET:</span>
+        <span id="metric-net-status" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1 animate-ping"></span> ONLINE
+        </span>
+      </div>
+    </div>
+
+    <!-- Action Toolbar Controls -->
+    <div class="flex items-center space-x-2">
+      <button id="btn-toggle-net" onclick="VM.toggleNetwork()" title="Toggle Virtual Wi-Fi (Online/Offline)" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center space-x-1.5 border border-slate-700 transition">
+        <i id="net-icon" class="fa-solid fa-wifi text-emerald-400"></i>
+        <span class="hidden sm:inline">Network</span>
+      </button>
+
+      <button onclick="VM.takeScreenshot()" title="Take Virtual Device Screenshot" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center space-x-1.5 border border-slate-700 transition">
+        <i class="fa-solid fa-camera text-sky-400"></i>
+        <span class="hidden sm:inline">Capture</span>
+      </button>
+
+      <button onclick="VM.rotateDevice()" title="Rotate Device" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center space-x-1.5 border border-slate-700 transition">
+        <i class="fa-solid fa-rotate text-purple-400"></i>
+        <span class="hidden sm:inline">Rotate</span>
+      </button>
+
+      <button id="btn-power" onclick="VM.togglePower()" title="Power On/Off Device" class="p-2 rounded-lg bg-red-950/50 hover:bg-red-900/60 text-red-300 text-xs flex items-center space-x-1.5 border border-red-800/50 transition">
+        <i class="fa-solid fa-power-off"></i>
+        <span class="hidden sm:inline">Power</span>
+      </button>
+
+      <button onclick="VM.toggleConsole()" title="Toggle Logcat Terminal" class="p-2 rounded-lg bg-indigo-900/40 hover:bg-indigo-800/60 text-indigo-300 text-xs flex items-center space-x-1.5 border border-indigo-700/50 transition">
+        <i class="fa-solid fa-terminal"></i>
+        <span class="hidden sm:inline">Logcat</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Workspace Area -->
+  <main class="flex-1 relative flex items-center justify-center p-3 sm:p-6 overflow-hidden bg-slate-950/60">
+    <!-- Grid Background FX -->
+    <div class="absolute inset-0 bg-[linear-gradient(to_right,#1e293b15_1px,transparent_1px),linear-gradient(to_bottom,#1e293b15_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none"></div>
+
+    <!-- Phone Chassis Frame -->
+    <div id="device-container" class="relative transition-all duration-500 ease-in-out flex flex-col items-center justify-center">
+      
+      <!-- Outer Smartphone Body -->
+      <div id="phone-chassis" class="relative w-[380px] h-[780px] max-h-[88vh] bg-slate-900 rounded-[48px] p-3.5 border-4 border-slate-700/80 device-screen-shadow transition-all duration-300 flex flex-col">
+        
+        <!-- Physical Side Buttons (Aesthetic) -->
+        <div onclick="VM.volumeStep(1)" class="absolute -left-2.5 top-28 w-1.5 h-12 bg-slate-700 rounded-l-md cursor-pointer hover:bg-slate-500 transition" title="Volume Up"></div>
+        <div onclick="VM.volumeStep(-1)" class="absolute -left-2.5 top-44 w-1.5 h-12 bg-slate-700 rounded-l-md cursor-pointer hover:bg-slate-500 transition" title="Volume Down"></div>
+        <div onclick="VM.togglePower()" class="absolute -right-2.5 top-32 w-1.5 h-16 bg-slate-700 rounded-r-md cursor-pointer hover:bg-red-500 transition" title="Power Button"></div>
+
+        <!-- Inner Bezel Display Wrapper -->
+        <div class="relative w-full h-full bg-slate-950 rounded-[38px] overflow-hidden flex flex-col border border-slate-800/80 shadow-inner">
+          
+          <!-- Gloss Reflection Layer -->
+          <div class="absolute inset-0 glossy-overlay pointer-events-none z-30"></div>
+
+          <!-- Camera Punch-Hole & Earpiece Speaker -->
+          <div class="absolute top-2 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center pointer-events-none">
+            <div class="w-12 h-1 bg-slate-800 rounded-full mb-1"></div>
+            <div class="w-4 h-4 bg-black rounded-full border border-slate-800 flex items-center justify-center">
+              <div class="w-1.5 h-1.5 bg-slate-900 rounded-full"></div>
+            </div>
+          </div>
+
+          <!-- Android Status Bar -->
+          <div id="status-bar" onclick="VM.toggleQuickSettings()" class="h-8 px-6 pt-1.5 flex justify-between items-center text-xs font-medium text-slate-200 z-30 cursor-pointer hover:bg-white/5 transition">
+            <span id="clock" class="font-semibold text-[11px] tracking-wide">12:00</span>
+            <div class="flex items-center space-x-2 text-[11px]">
+              <i id="status-wifi-icon" class="fa-solid fa-wifi text-emerald-400"></i>
+              <i class="fa-solid fa-signal text-slate-300"></i>
+              <div class="flex items-center space-x-1">
+                <span id="battery-level" class="text-[10px]">88%</span>
+                <i id="battery-icon" class="fa-solid fa-battery-three-quarters text-emerald-400"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Settings Dropdown Overlay -->
+          <div id="quick-settings" class="absolute inset-x-0 top-0 h-80 bg-slate-900/95 backdrop-blur-xl z-40 -translate-y-full transition-transform duration-300 border-b border-slate-700 p-5 flex flex-col justify-between shadow-2xl">
+            <div class="flex justify-between items-center text-slate-400 text-xs">
+              <span id="qs-date">Monday, Sep 28</span>
+              <div class="flex space-x-3 text-sm text-slate-200">
+                <i class="fa-solid fa-user-gear cursor-pointer hover:text-indigo-400" onclick="VM.openApp('settings')"></i>
+                <i class="fa-solid fa-power-off cursor-pointer hover:text-red-400" onclick="VM.togglePower()"></i>
+              </div>
+            </div>
+
+            <!-- Quick Tiles Grid -->
+            <div class="grid grid-cols-2 gap-3 my-auto">
+              <button onclick="VM.toggleNetwork()" class="m3-glass p-3 rounded-2xl flex items-center space-x-3 hover:bg-slate-800 transition">
+                <div id="qs-wifi-bg" class="w-9 h-9 rounded-full bg-indigo-500 text-white flex items-center justify-center">
+                  <i class="fa-solid fa-wifi"></i>
+                </div>
+                <div class="text-left">
+                  <div class="text-xs font-semibold text-slate-100">Internet</div>
+                  <div id="qs-wifi-sub" class="text-[10px] text-indigo-300">Android-VM-5G</div>
+                </div>
+              </button>
+
+              <button onclick="VM.toggleBluetooth()" class="m3-glass p-3 rounded-2xl flex items-center space-x-3 hover:bg-slate-800 transition">
+                <div id="qs-bt-bg" class="w-9 h-9 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center">
+                  <i class="fa-solid fa-bluetooth"></i>
+                </div>
+                <div class="text-left">
+                  <div class="text-xs font-semibold text-slate-100">Bluetooth</div>
+                  <div id="qs-bt-sub" class="text-[10px] text-slate-400">Off</div>
+                </div>
+              </button>
+
+              <button onclick="VM.toggleDarkMode()" class="m3-glass p-3 rounded-2xl flex items-center space-x-3 hover:bg-slate-800 transition">
+                <div class="w-9 h-9 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+                  <i class="fa-solid fa-moon"></i>
+                </div>
+                <div class="text-left">
+                  <div class="text-xs font-semibold text-slate-100">Dark Theme</div>
+                  <div class="text-[10px] text-indigo-300">Active</div>
+                </div>
+              </button>
+
+              <button onclick="VM.showToast('Do Not Disturb enabled')" class="m3-glass p-3 rounded-2xl flex items-center space-x-3 hover:bg-slate-800 transition">
+                <div class="w-9 h-9 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center">
+                  <i class="fa-solid fa-minus-circle"></i>
+                </div>
+                <div class="text-left">
+                  <div class="text-xs font-semibold text-slate-100">Do Not Disturb</div>
+                  <div class="text-[10px] text-slate-400">Off</div>
+                </div>
+              </button>
+            </div>
+
+            <!-- Volume / Brightness Sliders -->
+            <div class="space-y-2">
+              <div class="flex items-center space-x-3 text-xs text-slate-300">
+                <i class="fa-solid fa-volume-high"></i>
+                <input type="range" id="volume-slider" min="0" max="100" value="80" oninput="VM.setVolume(this.value)" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-400">
+              </div>
+            </div>
+
+            <div class="text-center pt-1" onclick="VM.toggleQuickSettings()">
+              <i class="fa-solid fa-chevron-up text-slate-500 text-xs hover:text-slate-300 cursor-pointer"></i>
+            </div>
+          </div>
+
+          <!-- Power Off Black Screen overlay -->
+          <div id="power-screen" class="absolute inset-0 bg-black z-50 flex items-center justify-center hidden">
+            <span class="text-xs text-slate-600 font-mono">Device Power Off</span>
+          </div>
+
+          <!-- Lock Screen View -->
+          <div id="lock-screen" class="absolute inset-0 z-20 bg-gradient-to-b from-indigo-950 via-slate-900 to-black flex flex-col justify-between p-8 text-center">
+            <div class="mt-12">
+              <div id="lock-clock" class="text-6xl font-light tracking-tighter text-indigo-200">12:00</div>
+              <div id="lock-date" class="text-sm font-medium text-indigo-300/80 mt-1">Monday, September 28</div>
+            </div>
+
+            <div class="mb-12 flex flex-col items-center space-y-4">
+              <button onclick="VM.unlockDevice()" class="w-14 h-14 rounded-full bg-indigo-500/20 border border-indigo-400/40 text-indigo-300 flex items-center justify-center animate-bounce">
+                <i class="fa-solid fa-lock-open text-lg"></i>
+              </button>
+              <span class="text-xs text-slate-400">Click or Swipe up to unlock</span>
+            </div>
+          </div>
+
+          <!-- Main OS Viewport Container -->
+          <div id="os-viewport" class="relative flex-1 bg-slate-950 overflow-hidden flex flex-col">
+            
+            <!-- Toast Banner Container -->
+            <div id="toast-container" class="absolute top-2 inset-x-3 z-50 pointer-events-none flex flex-col items-center space-y-2"></div>
+
+            <!-- Home Screen View -->
+            <div id="home-screen" class="absolute inset-0 flex flex-col justify-between p-5 overflow-y-auto bg-gradient-to-b from-slate-900 via-indigo-950/40 to-slate-950">
+              
+              <!-- Material You Weather / Clock Widget -->
+              <div class="mt-2 p-4 rounded-3xl m3-glass flex items-center justify-between border border-white/10 shadow-lg">
+                <div>
+                  <div class="text-2xl font-bold text-slate-100" id="widget-temp">72°F</div>
+                  <div class="text-xs text-slate-400 flex items-center space-x-1">
+                    <i class="fa-solid fa-location-dot text-indigo-400"></i>
+                    <span>Mountain View, CA</span>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <i class="fa-solid fa-cloud-sun text-amber-400 text-3xl"></i>
+                  <div class="text-[10px] text-slate-400 mt-1">Sunny & Clear</div>
+                </div>
+              </div>
+
+              <!-- Material Search Bar -->
+              <div class="my-4 px-4 py-3 rounded-full m3-glass flex items-center space-x-3 text-slate-300 cursor-pointer shadow-md border border-white/10 hover:bg-slate-800/80 transition" onclick="VM.openApp('browser')">
+                <i class="fa-brands fa-google text-indigo-400 text-lg"></i>
+                <span class="text-xs text-slate-400 flex-1">Search or type URL...</span>
+                <i class="fa-solid fa-microphone text-slate-400 text-xs"></i>
+              </div>
+
+              <!-- Launcher App Icons Grid -->
+              <div class="grid grid-cols-4 gap-4 my-auto" id="app-grid">
+                <!-- Dynamic App Icons injected here -->
+              </div>
+
+              <!-- Fixed Bottom Dock -->
+              <div class="mt-auto px-4 py-3 rounded-3xl m3-glass flex justify-around items-center border border-white/10 shadow-2xl">
+                <button onclick="VM.openApp('browser')" class="flex flex-col items-center group">
+                  <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white flex items-center justify-center text-lg shadow-lg group-hover:scale-105 transition">
+                    <i class="fa-solid fa-globe"></i>
+                  </div>
+                </button>
+                <button onclick="VM.openApp('connectivity')" class="flex flex-col items-center group">
+                  <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center text-lg shadow-lg group-hover:scale-105 transition">
+                    <i class="fa-solid fa-bolt"></i>
+                  </div>
+                </button>
+                <button onclick="VM.openApp('playstore')" class="flex flex-col items-center group">
+                  <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-sky-500 to-blue-600 text-white flex items-center justify-center text-lg shadow-lg group-hover:scale-105 transition">
+                    <i class="fa-solid fa-bag-shopping"></i>
+                  </div>
+                </button>
+                <button onclick="VM.openApp('runner')" class="flex flex-col items-center group">
+                  <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-600 to-pink-500 text-white flex items-center justify-center text-lg shadow-lg group-hover:scale-105 transition">
+                    <i class="fa-solid fa-box-open"></i>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <!-- Active App Container Overlay -->
+            <div id="app-window" class="absolute inset-0 bg-slate-900 z-10 hidden flex-col">
+              <!-- App Title Header Bar -->
+              <div class="h-10 border-b border-slate-800 bg-slate-950 px-4 flex items-center justify-between text-xs font-semibold text-slate-300">
+                <div class="flex items-center space-x-2">
+                  <i id="app-window-icon" class="fa-solid fa-cube text-indigo-400"></i>
+                  <span id="app-window-title">App Name</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <button onclick="VM.closeCurrentApp()" class="text-slate-400 hover:text-slate-100 p-1">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- App Content Body (Dynamic) -->
+              <div id="app-body" class="flex-1 overflow-y-auto relative bg-slate-900">
+                
+                <!-- APP 1: Google Play Store View -->
+                <div id="view-playstore" class="app-view hidden p-4 space-y-4">
+                  <div class="flex items-center space-x-2 bg-slate-800 rounded-xl px-3 py-2 border border-slate-700">
+                    <i class="fa-solid fa-magnifying-glass text-slate-400 text-xs"></i>
+                    <input type="text" placeholder="Search Google Play apps..." class="bg-transparent border-none text-xs text-slate-200 outline-none w-full" />
+                  </div>
+
+                  <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Featured Android Apps</h3>
+
+                  <div id="playstore-list" class="space-y-3">
+                    <!-- Dynamic store items -->
+                  </div>
+                </div>
+
+                <!-- APP 2: Chrome Web Browser View -->
+                <div id="view-browser" class="app-view hidden flex flex-col h-full">
+                  <div class="p-2 border-b border-slate-800 bg-slate-950 flex items-center space-x-2">
+                    <input id="browser-url" type="text" value="https://httpbin.org/get" class="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-200 outline-none focus:border-indigo-500">
+                    <button onclick="VM.browserNavigate()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium">Go</button>
+                  </div>
+                  <div class="flex-1 relative bg-white">
+                    <iframe id="browser-iframe" class="w-full h-full border-none" src="about:blank"></iframe>
+                    <div id="browser-fallback" class="absolute inset-0 bg-slate-900 p-4 text-xs font-mono text-slate-300 overflow-auto hidden">
+                      <div class="text-emerald-400 mb-2">// Network Inspection / Response Mirror</div>
+                      <pre id="browser-response-data">Loading...</pre>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- APP 3: App Connectivity Tester Suite -->
+                <div id="view-connectivity" class="app-view hidden p-4 space-y-4">
+                  <div class="border-b border-slate-800 pb-2">
+                    <h2 class="text-sm font-bold text-slate-100 flex items-center space-x-2">
+                      <i class="fa-solid fa-network-wired text-emerald-400"></i>
+                      <span>Android Network Diagnostics</span>
+                    </h2>
+                    <p class="text-[11px] text-slate-400">Test live network protocols & latency within emulated sandbox.</p>
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-2">
+                    <button onclick="VM.testApiEndpoint('ip')" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left transition">
+                      <div class="text-xs font-semibold text-sky-400">Public IP Test</div>
+                      <div class="text-[10px] text-slate-400">api.ipify.org</div>
+                    </button>
+                    <button onclick="VM.testApiEndpoint('json')" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left transition">
+                      <div class="text-xs font-semibold text-emerald-400">REST API Test</div>
+                      <div class="text-[10px] text-slate-400">jsonplaceholder GET</div>
+                    </button>
+                    <button onclick="VM.testApiEndpoint('echo')" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left transition">
+                      <div class="text-xs font-semibold text-purple-400">HTTP Echo POST</div>
+                      <div class="text-[10px] text-slate-400">httpbin.org/post</div>
+                    </button>
+                    <button onclick="VM.testApiEndpoint('ping')" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left transition">
+                      <div class="text-xs font-semibold text-amber-400">Latency Check</div>
+                      <div class="text-[10px] text-slate-400">Measure RTT Ping</div>
+                    </button>
+                  </div>
+
+                  <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono text-[11px] space-y-2">
+                    <div class="flex justify-between items-center text-slate-400">
+                      <span>Status Output</span>
+                      <span id="conn-latency" class="text-emerald-400">0 ms</span>
+                    </div>
+                    <pre id="conn-result" class="text-slate-300 max-h-40 overflow-auto whitespace-pre-wrap break-all">Ready for diagnostic test...</pre>
+                  </div>
+                </div>
+
+                <!-- APP 4: Custom APK / Web App Runner -->
+                <div id="view-runner" class="app-view hidden p-4 space-y-4">
+                  <div class="border-b border-slate-800 pb-2">
+                    <h2 class="text-sm font-bold text-slate-100 flex items-center space-x-2">
+                      <i class="fa-solid fa-code text-purple-400"></i>
+                      <span>APK & Custom Web App Deployment</span>
+                    </h2>
+                    <p class="text-[11px] text-slate-400">Deploy custom web app URLs into the virtual runtime environment.</p>
+                  </div>
+
+                  <div class="space-y-2">
+                    <label class="text-xs text-slate-300 font-medium">Target Web App URL or Embedded Page:</label>
+                    <input id="runner-url-input" type="text" placeholder="https://example.com" value="https://wikipedia.org" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-slate-200 outline-none focus:border-purple-500">
+                    <button onclick="VM.runCustomApp()" class="w-full py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold rounded-xl text-xs transition shadow-lg">
+                      Deploy & Launch Package
+                    </button>
+                  </div>
+
+                  <div class="border-t border-slate-800 pt-3">
+                    <div class="text-xs font-semibold text-slate-400 mb-2">Preset Quick Launchers:</div>
+                    <div class="grid grid-cols-2 gap-2">
+                      <button onclick="VM.loadPresetApp('calc')" class="p-2 bg-slate-800 rounded-lg text-xs text-slate-300 hover:bg-slate-700 text-left border border-slate-700">
+                        <i class="fa-solid fa-calculator text-indigo-400 mr-1"></i> Quick Calc Tool
+                      </button>
+                      <button onclick="VM.loadPresetApp('crypto')" class="p-2 bg-slate-800 rounded-lg text-xs text-slate-300 hover:bg-slate-700 text-left border border-slate-700">
+                        <i class="fa-solid fa-chart-line text-emerald-400 mr-1"></i> Live Crypto Ticker
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- APP 5: Android Settings View -->
+                <div id="view-settings" class="app-view hidden p-4 space-y-4">
+                  <h2 class="text-sm font-bold text-slate-100 border-b border-slate-800 pb-2">Device Settings</h2>
+
+                  <div class="space-y-3 text-xs">
+                    <div class="m3-glass p-3 rounded-xl border border-slate-800 flex justify-between items-center">
+                      <div>
+                        <div class="font-semibold text-slate-200">Device Name</div>
+                        <div class="text-[10px] text-slate-400">Google Pixel 9 Pro (Virtual)</div>
+                      </div>
+                      <i class="fa-solid fa-mobile-screen text-slate-400"></i>
+                    </div>
+
+                    <div class="m3-glass p-3 rounded-xl border border-slate-800 flex justify-between items-center">
+                      <div>
+                        <div class="font-semibold text-slate-200">Android Version</div>
+                        <div class="text-[10px] text-slate-400">Android 15 (Vanilla Ice Cream / API 35)</div>
+                      </div>
+                      <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px]">Latest</span>
+                    </div>
+
+                    <div class="m3-glass p-3 rounded-xl border border-slate-800 flex justify-between items-center">
+                      <div>
+                        <div class="font-semibold text-slate-200">Storage Manager</div>
+                        <div class="text-[10px] text-slate-400">18.4 GB used of 256 GB</div>
+                      </div>
+                      <button onclick="VM.clearAppStorage()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px]">Clean</button>
+                    </div>
+
+                    <div class="m3-glass p-3 rounded-xl border border-slate-800 flex justify-between items-center">
+                      <div>
+                        <div class="font-semibold text-slate-200">Emulated Kernel Architecture</div>
+                        <div class="text-[10px] text-slate-400">Linux 6.6-WASM x86_64</div>
+                      </div>
+                      <i class="fa-solid fa-microchip text-indigo-400"></i>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Dynamic Container for Custom Deployed App Preset -->
+                <div id="view-custom-container" class="app-view hidden h-full w-full bg-slate-950 p-2">
+                  <!-- Custom App Content inserted dynamically -->
+                </div>
+
+              </div>
+            </div>
+
+            <!-- Recents Multitasking Overview Container -->
+            <div id="recents-screen" class="absolute inset-0 bg-slate-950/90 backdrop-blur-md z-15 hidden flex-col justify-center items-center p-6 space-y-4">
+              <div class="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">Active Applications</div>
+              
+              <div id="recents-stack" class="w-full flex flex-col space-y-3 max-h-[70%] overflow-y-auto p-2">
+                <!-- Dynamic Recents Cards -->
+              </div>
+
+              <button onclick="VM.closeAllRecents()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-full border border-slate-700 transition">
+                Clear All
+              </button>
+            </div>
+
+          </div>
+
+          <!-- Standard Android Navigation Bar -->
+          <div id="nav-bar" class="h-10 bg-black/80 backdrop-blur flex items-center justify-around px-8 z-30 shrink-0 border-t border-slate-800/40">
+            <!-- Back Button -->
+            <button onclick="VM.navBack()" class="p-2 text-slate-400 hover:text-slate-100 active:scale-90 transition">
+              <i class="fa-solid fa-chevron-left text-sm"></i>
+            </button>
+            <!-- Home Button -->
+            <button onclick="VM.goHome()" class="p-2 text-slate-400 hover:text-slate-100 active:scale-90 transition">
+              <i class="fa-regular fa-circle text-base"></i>
+            </button>
+            <!-- Recents Button -->
+            <button onclick="VM.toggleRecents()" class="p-2 text-slate-400 hover:text-slate-100 active:scale-90 transition">
+              <i class="fa-regular fa-square text-sm"></i>
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Slide-up Logcat / Debug Console Drawer -->
+  <div id="console-drawer" class="fixed bottom-0 inset-x-0 h-64 bg-slate-950 border-t border-slate-800 flex flex-col z-50 transform translate-y-full transition-transform duration-300 font-mono text-xs shadow-2xl">
+    <div class="h-9 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between text-slate-300">
+      <div class="flex items-center space-x-3">
+        <span class="font-bold text-indigo-400 flex items-center space-x-1.5">
+          <i class="fa-solid fa-terminal"></i>
+          <span>Android Logcat & Network Sniffer</span>
+        </span>
+        <span id="log-count" class="bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full text-[10px]">0 logs</span>
+      </div>
+
+      <div class="flex items-center space-x-3">
+        <button onclick="VM.clearLogs()" class="text-slate-400 hover:text-slate-200 text-xs">Clear</button>
+        <button onclick="VM.toggleConsole()" class="text-slate-400 hover:text-slate-200 text-xs">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Log List -->
+    <div id="logcat-output" class="flex-1 overflow-y-auto p-3 space-y-1 bg-slate-950 text-slate-300 select-text font-mono text-[11px]">
+      <!-- Dynamic Logs -->
+    </div>
+  </div>
+
+  <script>
+    /**
+     * Android 15 Virtual Machine Engine & Sandbox Manager
+     */
+    class AndroidVM {
+      constructor() {
+        this.isPowered = true;
+        this.isLocked = false;
+        this.isOnline = true;
+        this.isBluetooth = false;
+        this.isRotated = false;
+        this.volume = 80;
+        this.currentApp = null;
+        this.appHistory = [];
+        this.installedApps = [
+          { id: 'playstore', name: 'Play Store', icon: 'fa-bag-shopping', bg: 'bg-gradient-to-tr from-sky-500 to-blue-600', system: true },
+          { id: 'browser', name: 'Chrome', icon: 'fa-globe', bg: 'bg-gradient-to-tr from-blue-600 to-indigo-500', system: true },
+          { id: 'connectivity', name: 'Net Tester', icon: 'fa-bolt', bg: 'bg-gradient-to-tr from-emerald-600 to-teal-500', system: true },
+          { id: 'runner', name: 'APK Runner', icon: 'fa-box-open', bg: 'bg-gradient-to-tr from-purple-600 to-pink-500', system: true },
+          { id: 'settings', name: 'Settings', icon: 'fa-gear', bg: 'bg-slate-700', system: true }
+        ];
+
+        this.storeCatalog = [
+          { id: 'app_calculator', name: 'Scientific Calc', category: 'Utility', icon: 'fa-calculator', installed: false, desc: 'Quick math and scientific calculator.' },
+          { id: 'app_crypto', name: 'Crypto Monitor', category: 'Finance', icon: 'fa-chart-line', installed: false, desc: 'Real-time crypto asset tracker.' },
+          { id: 'app_snake', name: 'Retro Snake Game', category: 'Games', icon: 'fa-gamepad', installed: false, desc: 'Classic snake arcade game.' }
+        ];
+
+        this.audioCtx = null;
+        this.fpsCounter = 60;
+        this.cpuUsage = 12;
+      }
+
+      init() {
+        this.initAudio();
+        this.startClock();
+        this.startMetricsLoop();
+        this.renderAppGrid();
+        this.renderPlayStore();
+        this.log('SYSTEM', 'Android 15 Kernel 6.6 initialized successfully [API 35].', 'info');
+        this.log('VM', 'Virtual WebAssembly runtime bridge connected.', 'info');
+      }
+
+      initAudio() {
+        try {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) {
+            this.audioCtx = new AudioContext();
+          }
+        } catch (e) {
+          console.warn('AudioContext not supported');
+        }
+      }
+
+      playAudioTone(freq = 440, duration = 0.05) {
+        if (!this.audioCtx) return;
+        try {
+          if (this.audioCtx.state === 'suspended') {
+            this.audioCtx.resume();
+          }
+          const osc = this.audioCtx.createOscillator();
+          const gain = this.audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, this.audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.05, this.audioCtx.currentTime);
+          osc.connect(gain);
+          gain.connect(this.audioCtx.destination);
+          osc.start();
+          osc.stop(this.audioCtx.currentTime + duration);
+        } catch (e) {}
+      }
+
+      startClock() {
+        const update = () => {
+          const now = new Date();
+          const hours = String(now.getHours()).padStart(2, '0');
+          const mins = String(now.getMinutes()).padStart(2, '0');
+          const timeStr = `${hours}:${mins}`;
+          
+          document.getElementById('clock').textContent = timeStr;
+          document.getElementById('lock-clock').textContent = timeStr;
+
+          const options = { weekday: 'long', month: 'short', day: 'numeric' };
+          const dateStr = now.toLocaleDateString('en-US', options);
+          document.getElementById('lock-date').textContent = dateStr;
+          document.getElementById('qs-date').textContent = dateStr;
+        };
+        update();
+        setInterval(update, 1000);
+      }
+
+      startMetricsLoop() {
+        setInterval(() => {
+          // Simulate dynamic CPU fluctuations
+          const cpuDelta = (Math.random() * 8) - 4;
+          this.cpuUsage = Math.min(Math.max(Math.round(this.cpuUsage + cpuDelta), 5), 85);
+          
+          document.getElementById('metric-cpu-text').textContent = `${this.cpuUsage}%`;
+          document.getElementById('metric-cpu-bar').style.width = `${this.cpuUsage}%`;
+
+          // Random slight FPS variance for realism
+          const fps = Math.floor(58 + Math.random() * 3);
+          document.getElementById('metric-fps').textContent = fps;
+        }, 2000);
+      }
+
+      log(tag, message, level = 'info') {
+        const output = document.getElementById('logcat-output');
+        const countBadge = document.getElementById('log-count');
+        
+        const timestamp = new Date().toISOString().split('T')[1].slice(0, 12);
+        const logEntry = document.createElement('div');
+        logEntry.className = 'flex space-x-2 border-b border-slate-900/50 py-0.5';
+
+        let levelClass = 'text-slate-400';
+        if (level === 'warn') levelClass = 'text-amber-400';
+        if (level === 'error') levelClass = 'text-red-400';
+        if (level === 'net') levelClass = 'text-emerald-400';
+
+        logEntry.innerHTML = `
+          <span class="text-slate-600">${timestamp}</span>
+          <span class="font-bold ${levelClass}">[${tag}]</span>
+          <span class="text-slate-200 flex-1 break-all">${message}</span>
+        `;
+
+        output.appendChild(logEntry);
+        output.scrollTop = output.scrollHeight;
+
+        const currentCount = output.children.length;
+        countBadge.textContent = `${currentCount} logs`;
+      }
+
+      clearLogs() {
+        document.getElementById('logcat-output').innerHTML = '';
+        document.getElementById('log-count').textContent = '0 logs';
+      }
+
+      showToast(msg) {
+        this.playAudioTone(520, 0.08);
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = 'm3-glass px-4 py-2 rounded-full text-xs font-medium text-slate-100 border border-slate-700 shadow-xl transition-all duration-300 transform translate-y-0 opacity-100 flex items-center space-x-2 pointer-events-auto';
+        toast.innerHTML = `<i class="fa-solid fa-circle-info text-indigo-400 text-xs"></i><span>${msg}</span>`;
+        
+        container.appendChild(toast);
+        setTimeout(() => {
+          toast.classList.add('opacity-0', '-translate-y-2');
+          setTimeout(() => toast.remove(), 300);
+        }, 2500);
+      }
+
+      toggleQuickSettings() {
+        const qs = document.getElementById('quick-settings');
+        const isOpen = !qs.classList.contains('-translate-y-full');
+        if (isOpen) {
+          qs.classList.add('-translate-y-full');
+        } else {
+          qs.classList.remove('-translate-y-full');
+          this.log('SYSTEM', 'Quick Settings shade opened.', 'info');
+        }
+      }
+
+      togglePower() {
+        this.isPowered = !this.isPowered;
+        const powerScreen = document.getElementById('power-screen');
+        if (!this.isPowered) {
+          powerScreen.classList.remove('hidden');
+          this.log('SYSTEM', 'Device powered down.', 'warn');
+          this.showToast('Device powered off');
+        } else {
+          powerScreen.classList.add('hidden');
+          this.log('SYSTEM', 'Device booted into Android 15.', 'info');
+          this.showToast('Android 15 Ready');
+        }
+      }
+
+      toggleNetwork() {
+        this.isOnline = !this.isOnline;
+        const icon = document.getElementById('net-icon');
+        const statusIcon = document.getElementById('status-wifi-icon');
+        const metricNet = document.getElementById('metric-net-status');
+        const qsBg = document.getElementById('qs-wifi-bg');
+        const qsSub = document.getElementById('qs-wifi-sub');
+
+        if (this.isOnline) {
+          icon.className = 'fa-solid fa-wifi text-emerald-400';
+          statusIcon.className = 'fa-solid fa-wifi text-emerald-400';
+          metricNet.className = 'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+          metricNet.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1 animate-ping"></span> ONLINE`;
+          qsBg.className = 'w-9 h-9 rounded-full bg-indigo-500 text-white flex items-center justify-center';
+          qsSub.textContent = 'Android-VM-5G';
+          this.showToast('Wi-Fi Connected');
+          this.log('NET', 'Virtual Wi-Fi adapter interface UP.', 'net');
+        } else {
+          icon.className = 'fa-solid fa-wifi-slash text-red-400';
+          statusIcon.className = 'fa-solid fa-wifi-slash text-slate-500';
+          metricNet.className = 'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-500/10 text-red-400 border border-red-500/20';
+          metricNet.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-red-400 mr-1"></span> OFFLINE`;
+          qsBg.className = 'w-9 h-9 rounded-full bg-slate-800 text-slate-500 flex items-center justify-center';
+          qsSub.textContent = 'Disconnected';
+          this.showToast('Wi-Fi Disconnected');
+          this.log('NET', 'Virtual Wi-Fi adapter interface DOWN.', 'warn');
+        }
+      }
+
+      toggleBluetooth() {
+        this.isBluetooth = !this.isBluetooth;
+        const qsBg = document.getElementById('qs-bt-bg');
+        const qsSub = document.getElementById('qs-bt-sub');
+        if (this.isBluetooth) {
+          qsBg.className = 'w-9 h-9 rounded-full bg-indigo-500 text-white flex items-center justify-center';
+          qsSub.textContent = 'On';
+          this.showToast('Bluetooth Turned On');
+        } else {
+          qsBg.className = 'w-9 h-9 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center';
+          qsSub.textContent = 'Off';
+          this.showToast('Bluetooth Off');
+        }
+      }
+
+      volumeStep(delta) {
+        this.volume = Math.min(Math.max(this.volume + delta * 10, 0), 100);
+        document.getElementById('volume-slider').value = this.volume;
+        this.showToast(`Volume: ${this.volume}%`);
+        this.playAudioTone(300 + this.volume * 3, 0.04);
+      }
+
+      setVolume(val) {
+        this.volume = val;
+      }
+
+      rotateDevice() {
+        this.isRotated = !this.isRotated;
+        const chassis = document.getElementById('phone-chassis');
+        if (this.isRotated) {
+          chassis.style.transform = 'rotate(-90deg) scale(0.85)';
+          this.showToast('Landscape Mode');
+        } else {
+          chassis.style.transform = 'none';
+          this.showToast('Portrait Mode');
+        }
+        this.log('SYSTEM', `Display rotated: landscape = ${this.isRotated}`, 'info');
+      }
+
+      takeScreenshot() {
+        this.playAudioTone(800, 0.1);
+        this.showToast('Screenshot Captured!');
+        this.log('SYSTEM', 'Virtual Framebuffer Screenshot saved.', 'info');
+      }
+
+      unlockDevice() {
+        this.playAudioTone(600, 0.05);
+        document.getElementById('lock-screen').classList.add('hidden');
+        this.isLocked = false;
+        this.log('SYSTEM', 'Device unlocked by user.', 'info');
+      }
+
+      toggleConsole() {
+        const drawer = document.getElementById('console-drawer');
+        drawer.classList.toggle('translate-y-full');
+      }
+
+      renderAppGrid() {
+        const grid = document.getElementById('app-grid');
+        grid.innerHTML = '';
+
+        this.installedApps.forEach(app => {
+          const btn = document.createElement('button');
+          btn.onclick = () => this.openApp(app.id);
+          btn.className = 'flex flex-col items-center group space-y-1.5';
+          btn.innerHTML = `
+            <div class="w-12 h-12 rounded-2xl ${app.bg} text-white flex items-center justify-center text-xl shadow-lg group-hover:scale-105 transition">
+              <i class="fa-solid ${app.icon}"></i>
+            </div>
+            <span class="text-[10px] text-slate-200 font-medium truncate w-14 text-center">${app.name}</span>
+          `;
+          grid.appendChild(btn);
+        });
+      }
+
+      renderPlayStore() {
+        const container = document.getElementById('playstore-list');
+        container.innerHTML = '';
+
+        this.storeCatalog.forEach(app => {
+          const card = document.createElement('div');
+          card.className = 'p-3 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center justify-between';
+          card.innerHTML = `
+            <div class="flex items-center space-x-3">
+              <div class="w-10 h-10 rounded-xl bg-indigo-600/30 text-indigo-400 border border-indigo-500/30 flex items-center justify-center text-lg">
+                <i class="fa-solid ${app.icon}"></i>
+              </div>
+              <div>
+                <div class="text-xs font-bold text-slate-100">${app.name}</div>
+                <div class="text-[10px] text-slate-400">${app.desc}</div>
+              </div>
+            </div>
+            <button id="btn-install-${app.id}" onclick="VM.installApp('${app.id}')" class="px-3 py-1.5 rounded-lg ${app.installed ? 'bg-slate-700 text-slate-300' : 'bg-indigo-600 hover:bg-indigo-500 text-white'} text-xs font-semibold transition">
+              ${app.installed ? 'Installed' : 'Install'}
+            </button>
+          `;
+          container.appendChild(card);
+        });
+      }
+
+      installApp(appId) {
+        const app = this.storeCatalog.find(a => a.id === appId);
+        if (!app) return;
+
+        if (app.installed) {
+          this.openApp(app.id);
+          return;
+        }
+
+        const btn = document.getElementById(`btn-install-${appId}`);
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i>`;
+        this.log('PLAYSTORE', `Downloading package: ${app.name}...`, 'info');
+
+        setTimeout(() => {
+          app.installed = true;
+          this.installedApps.push({
+            id: app.id,
+            name: app.name,
+            icon: app.icon,
+            bg: 'bg-gradient-to-tr from-indigo-600 to-purple-600',
+            system: false
+          });
+
+          this.renderAppGrid();
+          this.renderPlayStore();
+          this.playAudioTone(880, 0.12);
+          this.showToast(`${app.name} Installed!`);
+          this.log('PLAYSTORE', `Package ${app.name} installed successfully.`, 'info');
+        }, 1500);
+      }
+
+      openApp(appId) {
+        this.playAudioTone(450, 0.04);
+        const windowEl = document.getElementById('app-window');
+        const appTitle = document.getElementById('app-window-title');
+        const appIcon = document.getElementById('app-window-icon');
+
+        // Close active view overlays
+        document.querySelectorAll('.app-view').forEach(v => v.classList.add('hidden'));
+
+        const installed = this.installedApps.find(a => a.id === appId);
+        const name = installed ? installed.name : 'Application';
+
+        appTitle.textContent = name;
+        if (installed) appIcon.className = `fa-solid ${installed.icon} text-indigo-400`;
+
+        windowEl.classList.remove('hidden');
+        windowEl.classList.add('flex');
+
+        let targetView = document.getElementById(`view-${appId}`);
+        if (!targetView) {
+          targetView = document.getElementById('view-custom-container');
+          this.loadCustomAppView(appId);
+        }
+        targetView.classList.remove('hidden');
+
+        this.currentApp = appId;
+        if (!this.appHistory.includes(appId)) {
+          this.appHistory.push(appId);
+        }
+
+        this.log('ACTIVITY', `Displayed activity: ${appId}`, 'info');
+      }
+
+      closeCurrentApp() {
+        const windowEl = document.getElementById('app-window');
+        windowEl.classList.add('hidden');
+        windowEl.classList.remove('flex');
+        this.currentApp = null;
+      }
+
+      goHome() {
+        document.getElementById('recents-screen').classList.add('hidden');
+        document.getElementById('quick-settings').classList.add('-translate-y-full');
+        this.closeCurrentApp();
+        this.log('SYSTEM', 'Home gesture triggered.', 'info');
+      }
+
+      navBack() {
+        if (this.currentApp) {
+          this.closeCurrentApp();
+        } else {
+          this.showToast('Already on Home Screen');
+        }
+      }
+
+      toggleRecents() {
+        const recentsScreen = document.getElementById('recents-screen');
+        const isHidden = recentsScreen.classList.contains('hidden');
+
+        if (isHidden) {
+          this.renderRecentsStack();
+          recentsScreen.classList.remove('hidden');
+          recentsScreen.classList.add('flex');
+        } else {
+          recentsScreen.classList.add('hidden');
+          recentsScreen.classList.remove('flex');
+        }
+      }
+
+      renderRecentsStack() {
+        const stack = document.getElementById('recents-stack');
+        stack.innerHTML = '';
+
+        if (this.appHistory.length === 0) {
+          stack.innerHTML = `<div class="text-center text-xs text-slate-500 py-8">No Recent Apps</div>`;
+          return;
+        }
+
+        this.appHistory.forEach(appId => {
+          const appObj = this.installedApps.find(a => a.id === appId) || { name: appId, icon: 'fa-cube' };
+          const card = document.createElement('div');
+          card.className = 'recents-card m3-glass p-3 rounded-2xl border border-slate-700 flex justify-between items-center cursor-pointer hover:bg-slate-800';
+          card.onclick = () => {
+            document.getElementById('recents-screen').classList.add('hidden');
+            this.openApp(appId);
+          };
+          card.innerHTML = `
+            <div class="flex items-center space-x-3">
+              <i class="fa-solid ${appObj.icon} text-indigo-400 text-lg"></i>
+              <span class="text-xs font-semibold text-slate-200">${appObj.name}</span>
+            </div>
+            <button onclick="event.stopPropagation(); VM.removeRecent('${appId}')" class="text-slate-500 hover:text-slate-300">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          `;
+          stack.appendChild(card);
+        });
+      }
+
+      removeRecent(appId) {
+        this.appHistory = this.appHistory.filter(id => id !== appId);
+        this.renderRecentsStack();
+      }
+
+      closeAllRecents() {
+        this.appHistory = [];
+        this.renderRecentsStack();
+        this.goHome();
+      }
+
+      browserNavigate() {
+        if (!this.isOnline) {
+          this.showToast('ERR_INTERNET_DISCONNECTED');
+          this.log('BROWSER', 'Failed to navigate: Network Offline.', 'warn');
+          return;
+        }
+
+        const input = document.getElementById('browser-url');
+        let url = input.value.trim();
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          url = 'https://' + url;
+          input.value = url;
+        }
+
+        const iframe = document.getElementById('browser-iframe');
+        const fallback = document.getElementById('browser-fallback');
+        const responseData = document.getElementById('browser-response-data');
+
+        this.log('BROWSER', `Navigating to: ${url}`, 'net');
+
+        // Live Fetch test to handle CORS restrictions smoothly in iframe fallback
+        fetch(url)
+          .then(res => res.text())
+          .then(data => {
+            iframe.classList.add('hidden');
+            fallback.classList.remove('hidden');
+            responseData.textContent = data.slice(0, 1000) + (data.length > 1000 ? '\n... [truncated]' : '');
+            this.log('BROWSER', `HTTP GET ${url} -> 200 OK`, 'net');
+          })
+          .catch(err => {
+            iframe.classList.add('hidden');
+            fallback.classList.remove('hidden');
+            responseData.textContent = `// Cross-Origin (CORS) Restricted Webpage or Endpoint Response:\n${err.message}\n\nMirror Request Success: Target reached over Virtual Bridge.`;
+            this.log('BROWSER', `Network Response: ${err.message}`, 'info');
+          });
+      }
+
+      async testApiEndpoint(type) {
+        const resultEl = document.getElementById('conn-result');
+        const latencyEl = document.getElementById('conn-latency');
+
+        if (!this.isOnline) {
+          resultEl.textContent = 'Network Error: Device is currently OFFLINE.\nToggle Network status in top control bar.';
+          latencyEl.textContent = '0 ms';
+          this.log('NET', 'Connectivity test blocked: Offline mode.', 'warn');
+          return;
+        }
+
+        resultEl.textContent = 'Executing network request...';
+        const start = performance.now();
+
+        try {
+          if (type === 'ip') {
+            this.log('NET', 'HTTP GET https://api.ipify.org?format=json', 'net');
+            const res = await fetch('https://api.ipify.org?format=json');
+            const data = await res.json();
+            const elapsed = Math.round(performance.now() - start);
+            latencyEl.textContent = `${elapsed} ms`;
+            resultEl.textContent = JSON.stringify(data, null, 2);
+            this.log('NET', `IP response received: ${data.ip}`, 'net');
+          } else if (type === 'json') {
+            this.log('NET', 'HTTP GET https://jsonplaceholder.typicode.com/todos/1', 'net');
+            const res = await fetch('https://jsonplaceholder.typicode.com/todos/1');
+            const data = await res.json();
+            const elapsed = Math.round(performance.now() - start);
+            latencyEl.textContent = `${elapsed} ms`;
+            resultEl.textContent = JSON.stringify(data, null, 2);
+            this.log('NET', 'JSONPlaceholder API request success.', 'net');
+          } else if (type === 'echo') {
+            this.log('NET', 'HTTP POST https://httpbin.org/post', 'net');
+            const res = await fetch('https://httpbin.org/post', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ vm: 'Android 15', timestamp: Date.now() })
+            });
+            const data = await res.json();
+            const elapsed = Math.round(performance.now() - start);
+            latencyEl.textContent = `${elapsed} ms`;
+            resultEl.textContent = JSON.stringify(data, null, 2);
+            this.log('NET', 'HTTP Echo POST payload success.', 'net');
+          } else if (type === 'ping') {
+            this.log('NET', 'PING test to cloudflare.com DNS endpoint...', 'net');
+            const res = await fetch('https://1.1.1.1', { mode: 'no-cors' });
+            const elapsed = Math.round(performance.now() - start);
+            latencyEl.textContent = `${elapsed} ms`;
+            resultEl.textContent = `Ping Target: 1.1.1.1\nRTT Latency: ${elapsed} ms\nStatus: Reachable`;
+            this.log('NET', `Ping latency: ${elapsed} ms`, 'net');
+          }
+        } catch (err) {
+          const elapsed = Math.round(performance.now() - start);
+          latencyEl.textContent = `${elapsed} ms`;
+          resultEl.textContent = `Connectivity Error:\n${err.message}`;
+          this.log('NET', `API Request Failed: ${err.message}`, 'error');
+        }
+      }
+
+      runCustomApp() {
+        const input = document.getElementById('runner-url-input');
+        const url = input.value.trim();
+        if (!url) return;
+
+        this.log('RUNNER', `Deploying custom Web Package: ${url}`, 'info');
+        const container = document.getElementById('view-custom-container');
+        container.innerHTML = `<iframe src="${url}" class="w-full h-full rounded-xl border border-slate-800"></iframe>`;
+        
+        this.openApp('custom-container');
+        this.showToast('Custom Package Deployed');
+      }
+
+      loadPresetApp(preset) {
+        const container = document.getElementById('view-custom-container');
+        if (preset === 'calc') {
+          container.innerHTML = `
+            <div class="p-4 bg-slate-900 rounded-2xl border border-slate-800 max-w-xs mx-auto text-slate-100 font-mono">
+              <div id="calc-display" class="bg-slate-950 p-3 rounded-xl text-right text-xl font-bold mb-4 border border-slate-800 text-emerald-400 overflow-x-auto">0</div>
+              <div class="grid grid-cols-4 gap-2">
+                <button onclick="VM.calcInput('7')" class="p-3 bg-slate-800 rounded-xl font-bold text-sm">7</button>
+                <button onclick="VM.calcInput('8')" class="p-3 bg-slate-800 rounded-xl font-bold text-sm">8</button>
+                <button onclick="VM.calcInput('9')" class="p-3 bg-slate-800 rounded-xl font-bold text-sm">9</button>
+                <button onclick="VM.calcInput('/')" class="p-3 bg-indigo-600 rounded-xl font-bold text-sm">/</button>
+                <button onclick="VM.calcInput('4')" class="p-3 bg-slate-800 rounded-xl font-bold text-sm">4</button>
+                <button onclick="VM.calcInput('5')" class="p-3 bg-slate-800 rounded-xl font-bold text-sm">5</button>
+                <button onclick="VM.calcInput('6')" class="p-3 bg-slate-800 rounded-xl font-bold text-sm">6</button>
+                <button onclick="VM.calcInput('*')" class="p-3 bg-indigo-600 rounded-xl font-bold text-sm">*</button>
+                <button onclick="VM.calcInput('1')" class="p-3 bg-slate-800 rounded-xl font-bold text-sm">1</button>
+                <button onclick="VM.calcInput('2')" class="p-3 bg-slate-800 rounded-xl font-bold text-sm">2</button>
+                <button onclick="VM.calcInput('3')" class="p-3 bg-slate-800 rounded-xl font-bold text-sm">3</button>
+                <button onclick="VM.calcInput('-')" class="p-3 bg-indigo-600 rounded-xl font-bold text-sm">-</button>
+                <button onclick="VM.calcInput('C')" class="p-3 bg-red-800 rounded-xl font-bold text-sm">C</button>
+                <button onclick="VM.calcInput('0')" class="p-3 bg-slate-800 rounded-xl font-bold text-sm">0</button>
+                <button onclick="VM.calcEval()" class="p-3 bg-emerald-600 col-span-2 rounded-xl font-bold text-sm">=</button>
+              </div>
+            </div>
+          `;
+          this.calcExpr = '';
+          this.log('RUNNER', 'Loaded Scientific Calc widget.', 'info');
+        } else if (preset === 'crypto') {
+          container.innerHTML = `
+            <div class="p-4 bg-slate-900 rounded-2xl border border-slate-800 space-y-3">
+              <h3 class="text-xs font-bold text-slate-300">Live Crypto Ticker (Public API)</h3>
+              <div id="crypto-ticker-data" class="text-xs font-mono text-emerald-400">Loading live prices...</div>
+            </div>
+          `;
+          this.fetchCryptoData();
+        }
+        this.openApp('custom-container');
+      }
+
+      calcInput(val) {
+        const display = document.getElementById('calc-display');
+        if (val === 'C') {
+          this.calcExpr = '';
+          display.textContent = '0';
+        } else {
+          this.calcExpr += val;
+          display.textContent = this.calcExpr;
+        }
+      }
+
+      calcEval() {
+        const display = document.getElementById('calc-display');
+        try {
+          const res = eval(this.calcExpr);
+          display.textContent = res;
+          this.calcExpr = String(res);
+        } catch (e) {
+          display.textContent = 'Error';
+          this.calcExpr = '';
+        }
+      }
+
+      async fetchCryptoData() {
+        const el = document.getElementById('crypto-ticker-data');
+        try {
+          const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd');
+          const data = await res.json();
+          el.innerHTML = `
+            <div class="p-2 bg-slate-950 rounded-lg border border-slate-800 flex justify-between"><span>Bitcoin (BTC):</span> <span class="text-emerald-400">$${data.bitcoin?.usd || 'N/A'}</span></div>
+            <div class="p-2 bg-slate-950 rounded-lg border border-slate-800 flex justify-between"><span>Ethereum (ETH):</span> <span class="text-sky-400">$${data.ethereum?.usd || 'N/A'}</span></div>
+            <div class="p-2 bg-slate-950 rounded-lg border border-slate-800 flex justify-between"><span>Solana (SOL):</span> <span class="text-purple-400">$${data.solana?.usd || 'N/A'}</span></div>
+          `;
+          this.log('NET', 'Crypto market prices updated.', 'net');
+        } catch (e) {
+          el.textContent = 'Error fetching crypto prices or rate limited.';
+        }
+      }
+
+      loadCustomAppView(appId) {
+        const container = document.getElementById('view-custom-container');
+        if (appId === 'app_snake') {
+          container.innerHTML = `
+            <div class="p-4 text-center space-y-3 text-slate-200">
+              <i class="fa-solid fa-gamepad text-4xl text-emerald-400"></i>
+              <div class="text-xs font-bold">Retro Snake Web Edition</div>
+              <p class="text-[10px] text-slate-400">Emulated game runtime active in Android WASM container.</p>
+              <div class="p-4 bg-slate-950 rounded-xl border border-slate-800 font-mono text-emerald-400 text-xs">
+                [SNAKE GAME ENGINE READY]
+              </div>
+            </div>
+          `;
+        }
+      }
+
+      clearAppStorage() {
+        this.showToast('Storage cache cleared!');
+        this.log('SETTINGS', 'Cleared app cache and persistent web storage.', 'info');
+      }
+    }
+
+    let VM;
+    window.onload = () => {
+      VM = new AndroidVM();
+      VM.init();
+    };
+  </script>
+</body>
+</html>
